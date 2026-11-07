@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+.DS_Store
+*.tsbuildinfo
+
+# Phone numbers and email addresses from the opening spreadsheet.
+# The GitHub repo is public, so this file stays on the machine that imported them.
+src/data/contacts.local.ts
