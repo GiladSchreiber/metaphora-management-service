@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildSeed } from '../data/seed'
 import { loadContactSeeds } from '../data/loadContacts'
 import { assertCategoryFree, assertPartnerFree, assertUniqueName } from '../lib/guards'
-import { dataUrlToBlob } from '../lib/image'
+import { dataUrlExtension, dataUrlToBlob } from '../lib/image'
 import { errorMessage, newId } from '../lib/format'
 import type {
   AppData,
@@ -156,7 +156,9 @@ export class SupabaseRepository implements Repository {
       receiptUrl = null
     }
     if (input.receiptDataUrl) {
-      receiptUrl = await this.storeFile(`expenses/${id}.jpg`, input.receiptDataUrl)
+      const path = `expenses/${id}.${dataUrlExtension(input.receiptDataUrl)}`
+      if (receiptUrl && storagePath(receiptUrl) !== path) await this.removeFile(receiptUrl)
+      receiptUrl = await this.storeFile(path, input.receiptDataUrl)
     }
     const row = {
       id,

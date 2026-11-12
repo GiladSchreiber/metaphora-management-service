@@ -300,6 +300,12 @@ textarea { resize: vertical; min-height: 88px; }
 
 .photo img { width: min(100%, 240px); height: auto; max-height: 180px; }
 
+.file-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+.file-picker label { cursor: pointer; }
+.file-picker label.disabled { opacity: 0.5; pointer-events: none; }
+
+.file-link { display: inline-block; margin-top: 8px; }
+
 .group { margin-bottom: 18px; }
 .group h3 { margin: 0 0 8px; font-size: 1rem; color: $green; }
 .inline-add input { flex: 1; min-width: 0; }

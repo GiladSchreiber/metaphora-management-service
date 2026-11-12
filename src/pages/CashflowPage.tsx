@@ -1,13 +1,15 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
 import { CategoryField } from '../components/CategoryField'
 import { PlusIcon } from '../components/icons'
 import { Select } from '../components/Select'
 import { Field, Modal } from '../components/ui'
 import { errorMessage, formatDate, formatMoney, monthKey, monthLabel, todayISO } from '../lib/format'
-import { fileToCompressedDataUrl } from '../lib/image'
+import { fileToCompressedDataUrl, isPdfUrl, readFileAsDataUrl } from '../lib/image'
 import { partnerName } from '../lib/labels'
 import { useAppStore } from '../store/appStore'
 import type { Expense } from '../types'
+
+const MAX_PDF_BYTES = 10 * 1024 * 1024
 
 interface ExpenseForm {
   id?: string
@@ -135,7 +137,11 @@ export function CashflowPage() {
                       <div className="card-amount">{formatMoney(expense.amount)}</div>
                     </div>
                     {expense.description && <p className="card-note">{expense.description}</p>}
-                    {expense.receiptUrl && <img className="thumb" src={expense.receiptUrl} alt="קבלה" />}
+                    {expense.receiptUrl && (isPdfUrl(expense.receiptUrl) ? (
+                      <a className="file-link" href={expense.receiptUrl} target="_blank" rel="noreferrer">קבלה (PDF)</a>
+                    ) : (
+                      <img className="thumb" src={expense.receiptUrl} alt="קבלה" />
+                    ))}
                   </article>
                 </li>
               ))}
@@ -212,13 +218,26 @@ function ExpenseDialog({
     setReading(true)
     setError('')
     try {
-      const receiptDataUrl = await fileToCompressedDataUrl(file)
+      if (file.type !== 'application/pdf' && !file.type.startsWith('image/')) {
+        throw new Error('אפשר לצרף רק תמונה או קובץ PDF')
+      }
+      if (file.type === 'application/pdf' && file.size > MAX_PDF_BYTES) {
+        throw new Error('קובץ ה-PDF גדול מדי (עד 10MB)')
+      }
+      const receiptDataUrl = file.type === 'application/pdf'
+        ? await readFileAsDataUrl(file)
+        : await fileToCompressedDataUrl(file)
       setForm({ ...form, receiptDataUrl, clearReceipt: false })
     } catch (err) {
       setError(errorMessage(err))
     } finally {
       setReading(false)
     }
+  }
+
+  function onInputChange(event: ChangeEvent<HTMLInputElement>) {
+    void onFile(event.target.files?.[0])
+    event.target.value = ''
   }
 
   async function submit(event: FormEvent) {
@@ -277,7 +296,15 @@ function ExpenseDialog({
         <Field label="קבלה">
           {preview ? (
             <div className="photo">
-              <img src={preview} alt="תצוגה מקדימה של הקבלה" />
+              {isPdfUrl(preview) ? (
+                preview.startsWith('data:') ? (
+                  <span className="file-link">קובץ PDF מצורף</span>
+                ) : (
+                  <a className="file-link" href={preview} target="_blank" rel="noreferrer">קובץ PDF מצורף</a>
+                )
+              ) : (
+                <img src={preview} alt="תצוגה מקדימה של הקבלה" />
+              )}
               <button
                 type="button"
                 className="btn btn-ghost"
@@ -287,16 +314,29 @@ function ExpenseDialog({
               </button>
             </div>
           ) : (
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              disabled={reading}
-              onChange={event => {
-                void onFile(event.target.files?.[0])
-                event.target.value = ''
-              }}
-            />
+            <div className="file-picker">
+              <label className={`btn btn-ghost${reading ? ' disabled' : ''}`}>
+                צילום
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  hidden
+                  disabled={reading}
+                  onChange={onInputChange}
+                />
+              </label>
+              <label className={`btn btn-ghost${reading ? ' disabled' : ''}`}>
+                העלאת קובץ
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  hidden
+                  disabled={reading}
+                  onChange={onInputChange}
+                />
+              </label>
+            </div>
           )}
         </Field>
         <div className="form-actions">

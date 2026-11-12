@@ -22,7 +22,7 @@ export async function fileToCompressedDataUrl(
   return canvas.toDataURL('image/jpeg', quality)
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
@@ -47,4 +47,12 @@ export function dataUrlToBlob(dataUrl: string): Blob {
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return new Blob([bytes], { type: mime })
+}
+
+export function isPdfUrl(url: string): boolean {
+  return url.startsWith('data:application/pdf') || /\.pdf(\?|$)/i.test(url)
+}
+
+export function dataUrlExtension(dataUrl: string): string {
+  return dataUrl.startsWith('data:application/pdf') ? 'pdf' : 'jpg'
 }
