@@ -13,10 +13,12 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 export function Modal({
   title,
   onClose,
+  actions,
   children,
 }: {
   title: string
   onClose: () => void
+  actions?: ReactNode
   children: ReactNode
 }) {
   useEffect(() => {
@@ -43,7 +45,10 @@ export function Modal({
       >
         <div className="modal-head">
           <h2>{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="סגירה"><CloseIcon /></button>
+          <div className="modal-toolbar">
+            {actions}
+            <button type="button" className="icon-btn" onClick={onClose} aria-label="סגירה"><CloseIcon /></button>
+          </div>
         </div>
         {children}
       </div>

@@ -495,3 +495,11 @@ textarea { resize: vertical; min-height: 88px; }
 .subtask-editor legend { font-weight: 700; }
 .subtask-edit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .subtask-edit-row input:not([type='checkbox']) { flex: 1; min-width: 0; }
+
+.modal-toolbar { display: flex; align-items: center; gap: 4px; }
+.task-read-title { font-size: 1.2rem; font-weight: 700; }
+.task-read-done { text-decoration: line-through; color: $muted; }
+.task-details { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 12px 0; }
+.task-details dt { color: $muted; font-size: 0.9rem; }
+.task-details dd { margin: 4px 0 0; }
+.task-description { white-space: pre-wrap; overflow-wrap: anywhere; }

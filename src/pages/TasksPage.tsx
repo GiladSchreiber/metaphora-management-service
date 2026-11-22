@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { CategoryField } from '../components/CategoryField'
-import { PlusIcon, SearchIcon } from '../components/icons'
+import { EditIcon, PlusIcon, SearchIcon } from '../components/icons'
 import { Select } from '../components/Select'
 import { Field, Modal } from '../components/ui'
 import { errorMessage, formatWhen, newId } from '../lib/format'
@@ -146,6 +146,7 @@ export function TasksPage() {
       {editing && (
         <TaskDialog
           form={editing}
+          liveTask={liveTask}
           updates={liveTask?.updates ?? []}
           setForm={setEditing}
           onClose={() => setEditing(null)}
@@ -237,6 +238,7 @@ function TaskRow({
 
 function TaskDialog({
   form,
+  liveTask,
   updates,
   setForm,
   onClose,
@@ -246,6 +248,7 @@ function TaskDialog({
   onDeleteUpdate,
 }: {
   form: TaskForm
+  liveTask?: Task
   updates: Task['updates']
   setForm: (form: TaskForm) => void
   onClose: () => void
@@ -255,6 +258,11 @@ function TaskDialog({
   onDeleteUpdate: (taskId: string, updateId: string) => Promise<void>
 }) {
   const partners = useAppStore(state => state.data.partners)
+  const categories = useAppStore(state => state.data.categories)
+  const setTaskStatus = useAppStore(state => state.setTaskStatus)
+  const setSubtaskDone = useAppStore(state => state.setSubtaskDone)
+  const saveError = useAppStore(state => state.error)
+  const [editMode, setEditMode] = useState(!form.id)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [updateBody, setUpdateBody] = useState('')
@@ -288,15 +296,79 @@ function TaskDialog({
       if (form.id && updateBody.trim()) {
         await onAddUpdate({ taskId: form.id, body: updateBody, partnerId: updatePartner || null })
       }
-      onClose()
+      if (form.id) {
+        setSaving(false)
+        setEditMode(false)
+        setUpdateBody('')
+      } else {
+        onClose()
+      }
     } catch (err) {
       setError(errorMessage(err))
       setSaving(false)
     }
   }
 
+  if (!editMode && liveTask) {
+    return (
+      <Modal title="משימה" onClose={onClose} actions={
+        <button type="button" className="icon-btn" aria-label="עריכת משימה" title="עריכת משימה"
+          onClick={() => {
+            setForm({ ...liveTask, subtasks: liveTask.subtasks.map(item => ({ ...item })) })
+            setError('')
+            setEditMode(true)
+          }}><EditIcon /></button>
+      }>
+        {saveError && <p className="error" role="alert">{saveError}</p>}
+        <div className="task-read-heading">
+          <label className="subtask-item">
+            <input type="checkbox" className="check" checked={liveTask.status === 'done'}
+              aria-label={liveTask.status === 'done' ? 'החזרה לפתוחות' : 'סימון כבוצע'}
+              onChange={event => void setTaskStatus(liveTask.id, event.target.checked ? 'done' : 'open')} />
+            <span className={liveTask.status === 'done' ? 'task-read-title task-read-done' : 'task-read-title'}>{liveTask.topic}</span>
+          </label>
+        </div>
+        <dl className="task-details">
+          <div><dt>קטגוריה</dt><dd>{categories.find(category => category.id === liveTask.categoryId)?.name}</dd></div>
+          <div><dt>אחראים</dt><dd>{ownerLabel(partners, liveTask.ownerIds)}</dd></div>
+          <div><dt>דחיפות</dt><dd>{URGENCY_LABELS[liveTask.urgency]}</dd></div>
+        </dl>
+        {liveTask.description && <p className="task-description">{liveTask.description}</p>}
+        {liveTask.subtasks.length > 0 && (
+          <section>
+            <h3>תתי משימות <span className="muted">({liveTask.subtasks.filter(item => item.done).length}/{liveTask.subtasks.length})</span></h3>
+            <ul className="subtask-list">
+              {liveTask.subtasks.map(subtask => (
+                <li key={subtask.id}>
+                  <label className={subtask.done ? 'subtask-item subtask-done' : 'subtask-item'}>
+                    <input type="checkbox" className="check" checked={subtask.done}
+                      onChange={event => void setSubtaskDone(liveTask.id, subtask.id, event.target.checked)} />
+                    <span>{subtask.title}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {updates.length > 0 && (
+          <section>
+            <h3>עדכונים</h3>
+            <ul className="update-list">
+              {updates.map(update => (
+                <li key={update.id} className="update">
+                  <p>{update.body}</p>
+                  <span className="muted">{formatWhen(update.createdAt)}{update.partnerId ? ` · ${partnerName(partners, update.partnerId)}` : ''}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </Modal>
+    )
+  }
+
   return (
-    <Modal title={form.id ? 'משימה' : 'משימה חדשה'} onClose={onClose}>
+    <Modal title={form.id ? 'עריכת משימה' : 'משימה חדשה'} onClose={onClose}>
       <form id="task-form" onSubmit={event => void submit(event)}>
         {error && <p className="error">{error}</p>}
         <CategoryField value={form.categoryId} onChange={categoryId => setForm({ ...form, categoryId })} />
@@ -390,7 +462,13 @@ function TaskDialog({
 
       <div className="form-actions">
         <button className="btn btn-primary" type="submit" form="task-form" disabled={saving}>{saving ? 'שומר…' : 'שמירה'}</button>
-        <button className="btn btn-ghost" type="button" onClick={onClose}>ביטול</button>
+        <button className="btn btn-ghost" type="button" disabled={saving} onClick={() => {
+          if (form.id) {
+            setEditMode(false)
+            setError('')
+            setUpdateBody('')
+          } else onClose()
+        }}>ביטול</button>
         {form.id && <button className="btn btn-danger" type="button" onClick={onDelete}>מחיקה</button>}
       </div>
     </Modal>
