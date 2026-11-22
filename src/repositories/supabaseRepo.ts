@@ -1,4 +1,6 @@
+import { contactDetails, prepareContactDetails } from '../lib/contactDetails'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { assertTaskParent } from '../lib/taskHierarchy'
 import { taskDetailsMode } from '../lib/taskDetails'
 import { buildSeed } from '../data/seed'
 import { loadContactSeeds } from '../data/loadContacts'
@@ -8,6 +10,9 @@ import { errorMessage, newId } from '../lib/format'
 import type {
   AppData,
   ContactDraft,
+  ContactCategory,
+  DeliveryDay,
+  OrderingMethod,
   ExpenseDraft,
   Repository,
   Subtask,
@@ -35,6 +40,7 @@ interface ExpenseRow {
 }
 interface TaskRow {
   id: string
+  parent_task_id?: string | null
   topic: string
   description: string | null
   category_id: string
@@ -55,6 +61,15 @@ interface UpdateRow {
   created_at: string
 }
 interface ContactRow {
+  supplier_categories?: ContactCategory[]
+  delivery_days?: DeliveryDay[]
+  ordering_methods?: OrderingMethod[]
+  app_url?: string
+  website_url?: string
+  whatsapp_number?: string
+  customer_number?: string
+  account_username?: string
+  password_manager_url?: string
   id: string
   name: string
   phone: string
@@ -193,6 +208,8 @@ export class SupabaseRepository implements Repository {
     const existing = input.id ? data.tasks.find(task => task.id === input.id) : undefined
     if (input.id && !existing) throw new Error('המשימה לא נמצאה')
     const id = existing?.id ?? newId('task')
+    const parentTaskId = input.parentTaskId !== undefined ? input.parentTaskId : existing?.parentTaskId ?? null
+    assertTaskParent(data.tasks, id, parentTaskId)
     let photoUrl = existing?.photoUrl ?? null
     if (input.clearPhoto) {
       await this.removeFile(photoUrl)
@@ -206,6 +223,7 @@ export class SupabaseRepository implements Repository {
       : null
     const { error } = await this.supabase.from('tasks').upsert({
       id,
+      parent_task_id: parentTaskId,
       topic: input.topic.trim(),
       description: input.description.trim(),
       category_id: input.categoryId,
@@ -274,7 +292,17 @@ export class SupabaseRepository implements Repository {
     const data = await this.fetchAll()
     const existing = input.id ? data.contacts.find(contact => contact.id === input.id) : undefined
     if (input.id && !existing) throw new Error('איש הקשר לא נמצא')
+    const details = prepareContactDetails({ ...existing, ...input })
     const { error } = await this.supabase.from('contacts').upsert({
+      supplier_categories: details.supplierCategories,
+      delivery_days: details.deliveryDays,
+      ordering_methods: details.orderingMethods,
+      app_url: details.appUrl,
+      website_url: details.websiteUrl,
+      whatsapp_number: details.whatsappNumber,
+      customer_number: details.customerNumber,
+      account_username: details.accountUsername,
+      password_manager_url: details.passwordManagerUrl,
       id: existing?.id ?? newId('contact'),
       name: input.name.trim(),
       phone: input.phone.trim(),
@@ -398,6 +426,7 @@ export class SupabaseRepository implements Repository {
       })),
       tasks: tasks.map(row => ({
         id: row.id,
+        parentTaskId: row.parent_task_id ?? null,
         topic: row.topic,
         description: row.description ?? '',
         categoryId: row.category_id,
@@ -412,6 +441,17 @@ export class SupabaseRepository implements Repository {
         updates: updatesByTask.get(row.id) ?? [],
       })),
       contacts: contacts.map(row => ({
+        ...contactDetails({
+          supplierCategories: row.supplier_categories,
+          deliveryDays: row.delivery_days,
+          orderingMethods: row.ordering_methods,
+          appUrl: row.app_url,
+          websiteUrl: row.website_url,
+          whatsappNumber: row.whatsapp_number,
+          customerNumber: row.customer_number,
+          accountUsername: row.account_username,
+          passwordManagerUrl: row.password_manager_url,
+        }),
         id: row.id,
         name: row.name,
         phone: row.phone,

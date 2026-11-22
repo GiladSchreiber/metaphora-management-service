@@ -1,3 +1,4 @@
+import { contactDetails } from '../lib/contactDetails'
 import { parseTaskCell } from '../lib/parseTaskCell'
 import type { AppData, Category, Partner, Task } from '../types'
 
@@ -131,6 +132,7 @@ export function buildTasks(categories: Category[]): Task[] {
       const createdAt = new Date(Date.UTC(2026, 10, 7, 8, 0, index)).toISOString()
       tasks.push({
         id: `task-${String(columnIndex + 1).padStart(2, '0')}-${String(cellIndex + 1).padStart(2, '0')}`,
+        parentTaskId: null,
         topic: parsed.topic,
         description: '',
         categoryId,
@@ -159,6 +161,7 @@ export function buildSeed(contacts: ContactSeed[]): AppData {
     expenses: [],
     tasks: buildTasks(categories),
     contacts: contacts.map((contact, index) => ({
+      ...contactDetails(),
       id: `contact-${String(index + 1).padStart(2, '0')}`,
       name: contact.name,
       phone: contact.phone,

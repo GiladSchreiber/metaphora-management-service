@@ -1,6 +1,8 @@
+import { contactDetails, prepareContactDetails } from '../lib/contactDetails'
 import { buildSeed } from '../data/seed'
 import { loadContactSeeds } from '../data/loadContacts'
 import { assertCategoryFree, assertPartnerFree, assertUniqueName } from '../lib/guards'
+import { assertTaskParent } from '../lib/taskHierarchy'
 import { taskDetailsMode } from '../lib/taskDetails'
 import { newId } from '../lib/format'
 import type {
@@ -32,9 +34,11 @@ function read(): AppData {
     }
     parsed.tasks = parsed.tasks.map(task => ({
       ...task,
+      parentTaskId: task.parentTaskId ?? null,
       subtasks: task.subtasks ?? [],
       detailsMode: taskDetailsMode({ ...task, subtasks: task.subtasks ?? [] }),
     }))
+    parsed.contacts = parsed.contacts.map(contact => ({ ...contact, ...contactDetails(contact) }))
     return parsed
   } catch {
     return write(seed())
@@ -141,6 +145,9 @@ export class MockRepository implements Repository {
     const data = read()
     const existing = input.id ? data.tasks.find(task => task.id === input.id) : undefined
     if (input.id && !existing) throw new Error('המשימה לא נמצאה')
+    const id = existing?.id ?? newId('task')
+    const parentTaskId = input.parentTaskId !== undefined ? input.parentTaskId : existing?.parentTaskId ?? null
+    assertTaskParent(data.tasks, id, parentTaskId)
     let photoUrl = existing?.photoUrl ?? null
     if (input.clearPhoto) photoUrl = null
     if (input.photoDataUrl) photoUrl = input.photoDataUrl
@@ -148,7 +155,8 @@ export class MockRepository implements Repository {
       ? existing?.doneAt ?? new Date().toISOString()
       : null
     const task: Task = {
-      id: existing?.id ?? newId('task'),
+      id,
+      parentTaskId,
       topic: input.topic.trim(),
       description: input.description.trim(),
       categoryId: input.categoryId,
@@ -171,7 +179,9 @@ export class MockRepository implements Repository {
 
   async deleteTask(id: string): Promise<void> {
     const data = read()
-    data.tasks = data.tasks.filter(task => task.id !== id)
+    data.tasks = data.tasks.filter(task => task.id !== id).map(task =>
+      task.parentTaskId === id ? { ...task, parentTaskId: null } : task,
+    )
     write(data)
   }
 
@@ -219,6 +229,7 @@ export class MockRepository implements Repository {
     const existing = input.id ? data.contacts.find(contact => contact.id === input.id) : undefined
     if (input.id && !existing) throw new Error('איש הקשר לא נמצא')
     const contact: Contact = {
+      ...prepareContactDetails({ ...existing, ...input }),
       id: existing?.id ?? newId('contact'),
       name: input.name.trim(),
       phone: input.phone.trim(),

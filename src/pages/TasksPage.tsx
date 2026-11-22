@@ -5,6 +5,7 @@ import { Select } from '../components/Select'
 import { Field, Modal } from '../components/ui'
 import { errorMessage, formatWhen, newId } from '../lib/format'
 import { ownerLabel, partnerName, URGENCY_LABELS } from '../lib/labels'
+import { parentCandidates, taskForest } from '../lib/taskHierarchy'
 import { useAppStore } from '../store/appStore'
 import type { Task, TaskDraft, TaskDetailsMode, TaskStatus, Subtask, Urgency } from '../types'
 
@@ -16,6 +17,7 @@ function urgencyRank(urgency: Urgency): number {
 
 interface TaskForm {
   id?: string
+  parentTaskId: string | null
   topic: string
   description: string
   categoryId: string
@@ -38,6 +40,7 @@ export function TasksPage() {
   const [topicQuery, setTopicQuery] = useState('')
   const [doneOpen, setDoneOpen] = useState(false)
   const [editing, setEditing] = useState<TaskForm | null>(null)
+  const [dialogKey, setDialogKey] = useState(0)
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
@@ -50,13 +53,16 @@ export function TasksPage() {
     })
   }, [data.tasks, ownerFilter, topicQuery])
 
-  const openTasks = filtered.filter(task => task.status === 'open')
-  const doneTasks = filtered
-    .filter(task => task.status === 'done')
+  const { roots, activeRootIds } = useMemo(() => taskForest(filtered), [filtered])
+  const openTasks = roots.filter(task => activeRootIds.has(task.id))
+  const doneTasks = roots
+    .filter(task => !activeRootIds.has(task.id))
     .sort((a, b) => (b.doneAt ?? '').localeCompare(a.doneAt ?? ''))
 
   function openNew() {
+    setDialogKey(key => key + 1)
     setEditing({
+      parentTaskId: null,
       topic: '',
       description: '',
       categoryId: data.categories[0]?.id ?? '',
@@ -69,7 +75,9 @@ export function TasksPage() {
   }
 
   function openExisting(task: Task) {
+    setDialogKey(key => key + 1)
     setEditing({
+      parentTaskId: task.parentTaskId,
       id: task.id,
       topic: task.topic,
       description: task.description,
@@ -124,7 +132,7 @@ export function TasksPage() {
             <h3>{category.name}</h3>
             <ul className="list">
               {items.map(task => (
-                <TaskRow key={task.id} task={task} onOpen={openExisting} onToggle={setTaskStatus} />
+                <TaskRow key={task.id} task={task} treeTasks={filtered} onOpen={openExisting} onToggle={setTaskStatus} />
               ))}
             </ul>
           </section>
@@ -140,7 +148,7 @@ export function TasksPage() {
         {doneOpen && (
           <ul className="list">
             {doneTasks.map(task => (
-              <TaskRow key={task.id} task={task} onOpen={openExisting} onToggle={setTaskStatus} />
+              <TaskRow key={task.id} task={task} treeTasks={filtered} onOpen={openExisting} onToggle={setTaskStatus} />
             ))}
           </ul>
         )}
@@ -148,7 +156,9 @@ export function TasksPage() {
 
       {editing && (
         <TaskDialog
+          key={dialogKey}
           form={editing}
+          onOpen={openExisting}
           liveTask={liveTask}
           updates={liveTask?.updates ?? []}
           setForm={setEditing}
@@ -162,7 +172,7 @@ export function TasksPage() {
 
       {confirmId && (
         <Modal title="למחוק את המשימה?" onClose={() => setConfirmId(null)}>
-          <p>המשימה והעדכונים שלה יימחקו.</p>
+          <p>המשימה והעדכונים שלה יימחקו. משימות שמשויכות אליה יחזרו לרשימה הראשית.</p>
           <div className="form-actions">
             <button
               type="button"
@@ -186,10 +196,12 @@ export function TasksPage() {
 
 function TaskRow({
   task,
+  treeTasks,
   onOpen,
   onToggle,
 }: {
   task: Task
+  treeTasks: Task[]
   onOpen: (task: Task) => void
   onToggle: (id: string, status: TaskStatus) => Promise<void>
 }) {
@@ -197,6 +209,8 @@ function TaskRow({
   const categories = useAppStore(state => state.data.categories)
   const setSubtaskDone = useAppStore(state => state.setSubtaskDone)
   const category = categories.find(item => item.id === task.categoryId)?.name
+  const children = treeTasks.filter(item => item.parentTaskId === task.id)
+    .sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done') || urgencyRank(a.urgency) - urgencyRank(b.urgency) || a.createdAt.localeCompare(b.createdAt))
   const done = task.status === 'done'
   return (
     <li className={done ? 'task-row task-done' : 'task-row'}>
@@ -218,6 +232,7 @@ function TaskRow({
             <span>{ownerLabel(partners, task.ownerIds)}</span>
             {done && category && <span>{category}</span>}
             {task.subtasks.length > 0 && <span>{task.subtasks.filter(item => item.done).length}/{task.subtasks.length} תתי משימות</span>}
+            {children.length > 0 && <span>{children.filter(child => child.status === 'done').length}/{children.length} משימות משנה</span>}
             {task.updates.length > 0 && <span>{task.updates.length} עדכונים</span>}
           </span>
         </button>
@@ -235,12 +250,18 @@ function TaskRow({
           ))}
         </ul>
       )}
+      {children.length > 0 && (
+        <ul className="attached-task-list">
+          {children.map(child => <TaskRow key={child.id} task={child} treeTasks={treeTasks} onOpen={onOpen} onToggle={onToggle} />)}
+        </ul>
+      )}
     </li>
   )
 }
 
 function TaskDialog({
   form,
+  onOpen,
   liveTask,
   updates,
   setForm,
@@ -251,6 +272,7 @@ function TaskDialog({
   onDeleteUpdate,
 }: {
   form: TaskForm
+  onOpen: (task: Task) => void
   liveTask?: Task
   updates: Task['updates']
   setForm: (form: TaskForm) => void
@@ -260,6 +282,7 @@ function TaskDialog({
   onAddUpdate: (input: { taskId: string; body: string; partnerId: string | null }) => Promise<void>
   onDeleteUpdate: (taskId: string, updateId: string) => Promise<void>
 }) {
+  const tasks = useAppStore(state => state.data.tasks)
   const partners = useAppStore(state => state.data.partners)
   const categories = useAppStore(state => state.data.categories)
   const setTaskStatus = useAppStore(state => state.setTaskStatus)
@@ -270,6 +293,9 @@ function TaskDialog({
   const [saving, setSaving] = useState(false)
   const [updateBody, setUpdateBody] = useState('')
   const [updatePartner, setUpdatePartner] = useState('')
+  const parentTask = liveTask?.parentTaskId ? tasks.find(task => task.id === liveTask.parentTaskId) : undefined
+  const childTasks = tasks.filter(task => task.parentTaskId === form.id)
+  const possibleParents = parentCandidates(tasks, form.id).sort((a, b) => a.topic.localeCompare(b.topic, 'he'))
 
   function toggleOwner(id: string) {
     const ownerIds = form.ownerIds.includes(id)
@@ -290,6 +316,7 @@ function TaskDialog({
     try {
       const savedId = await onSave({
         id: form.id,
+        parentTaskId: form.parentTaskId,
         topic: form.topic,
         description: form.description,
         categoryId: form.categoryId,
@@ -388,6 +415,11 @@ function TaskDialog({
           <div><dt>אחראים</dt><dd>{ownerLabel(partners, liveTask.ownerIds)}</dd></div>
           <div><dt>דחיפות</dt><dd>{URGENCY_LABELS[liveTask.urgency]}</dd></div>
         </dl>
+        {parentTask && (
+          <button type="button" className="btn btn-ghost task-parent-link" onClick={() => onOpen(parentTask)}>
+            משימת אב: {parentTask.topic}
+          </button>
+        )}
         {liveTask.description && <p className="task-description">{liveTask.description}</p>}
         {liveTask.detailsMode === 'checklist' && (
           <section>
@@ -402,6 +434,14 @@ function TaskDialog({
                   </label>
                 </li>
               ))}
+            </ul>
+          </section>
+        )}
+        {childTasks.length > 0 && (
+          <section>
+            <h3>משימות משנה ({childTasks.length})</h3>
+            <ul className="list">
+              {childTasks.map(task => <TaskRow key={task.id} task={task} treeTasks={tasks} onOpen={onOpen} onToggle={setTaskStatus} />)}
             </ul>
           </section>
         )}
@@ -447,6 +487,15 @@ function TaskDialog({
               </button>
             ))}
           </div>
+        </div>
+        <div className="field">
+          <span>משימת אב</span>
+          <Select ariaLabel="משימת אב" value={form.parentTaskId ?? ''}
+            onChange={parentTaskId => setForm({ ...form, parentTaskId: parentTaskId || null })}
+            options={[
+              { value: '', label: 'ללא — משימה עצמאית' },
+              ...possibleParents.map(task => ({ value: task.id, label: task.topic })),
+            ]} />
         </div>
         <Field label="נושא">
           <input value={form.topic} onChange={event => setForm({ ...form, topic: event.target.value })} />

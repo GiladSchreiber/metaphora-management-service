@@ -38,6 +38,7 @@ export interface Subtask {
 
 export interface Task {
   id: string
+  parentTaskId: string | null
   topic: string
   description: string
   categoryId: string
@@ -52,7 +53,23 @@ export interface Task {
   updates: TaskUpdate[]
 }
 
-export interface Contact {
+export type ContactCategory = 'food' | 'alcohol' | 'coffee_tea' | 'professionals'
+export type DeliveryDay = 0 | 1 | 2 | 3 | 4 | 5 | 6
+export type OrderingMethod = 'app' | 'website' | 'whatsapp'
+
+export interface ContactSupplierDetails {
+  supplierCategories: ContactCategory[]
+  deliveryDays: DeliveryDay[]
+  orderingMethods: OrderingMethod[]
+  appUrl: string
+  websiteUrl: string
+  whatsappNumber: string
+  customerNumber: string
+  accountUsername: string
+  passwordManagerUrl: string
+}
+
+export interface Contact extends ContactSupplierDetails {
   id: string
   name: string
   phone: string
@@ -84,6 +101,7 @@ export interface ExpenseDraft {
 
 export interface TaskDraft {
   id?: string
+  parentTaskId?: string | null
   topic: string
   description: string
   categoryId: string
@@ -96,7 +114,7 @@ export interface TaskDraft {
   clearPhoto?: boolean
 }
 
-export interface ContactDraft {
+export interface ContactDraft extends Partial<ContactSupplierDetails> {
   id?: string
   name: string
   phone: string
