@@ -503,3 +503,7 @@ textarea { resize: vertical; min-height: 88px; }
 .task-details dt { color: $muted; font-size: 0.9rem; }
 .task-details dd { margin: 4px 0 0; }
 .task-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.task-detail-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.legacy-updates { margin-top: 16px; }
+.legacy-updates summary { cursor: pointer; color: $muted; }

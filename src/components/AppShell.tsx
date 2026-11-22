@@ -3,8 +3,8 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAppStore } from '../store/appStore'
 
 const links = [
-  { to: '/', label: 'תזרים', end: true },
   { to: '/tasks', label: 'משימות', end: false },
+  { to: '/cashflow', label: 'תזרים', end: false },
   { to: '/contacts', label: 'אנשי קשר', end: false },
 ]
 

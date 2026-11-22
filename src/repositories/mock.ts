@@ -1,6 +1,7 @@
 import { buildSeed } from '../data/seed'
 import { loadContactSeeds } from '../data/loadContacts'
 import { assertCategoryFree, assertPartnerFree, assertUniqueName } from '../lib/guards'
+import { taskDetailsMode } from '../lib/taskDetails'
 import { newId } from '../lib/format'
 import type {
   AppData,
@@ -29,7 +30,11 @@ function read(): AppData {
     if (!parsed.partners || !parsed.categories || !parsed.tasks || !parsed.expenses || !parsed.contacts) {
       return write(seed())
     }
-    parsed.tasks = parsed.tasks.map(task => ({ ...task, subtasks: task.subtasks ?? [] }))
+    parsed.tasks = parsed.tasks.map(task => ({
+      ...task,
+      subtasks: task.subtasks ?? [],
+      detailsMode: taskDetailsMode({ ...task, subtasks: task.subtasks ?? [] }),
+    }))
     return parsed
   } catch {
     return write(seed())
@@ -132,7 +137,7 @@ export class MockRepository implements Repository {
     write(data)
   }
 
-  async saveTask(input: TaskDraft): Promise<void> {
+  async saveTask(input: TaskDraft): Promise<string> {
     const data = read()
     const existing = input.id ? data.tasks.find(task => task.id === input.id) : undefined
     if (input.id && !existing) throw new Error('המשימה לא נמצאה')
@@ -153,6 +158,7 @@ export class MockRepository implements Repository {
       doneAt,
       photoUrl,
       createdAt: existing?.createdAt ?? new Date().toISOString(),
+      detailsMode: input.detailsMode !== undefined ? input.detailsMode : existing?.detailsMode ?? null,
       subtasks: (input.subtasks ?? existing?.subtasks ?? []).map(item => ({ ...item, title: item.title.trim() })),
       updates: existing?.updates ?? [],
     }
@@ -160,6 +166,7 @@ export class MockRepository implements Repository {
       ? data.tasks.map(item => item.id === task.id ? task : item)
       : [task, ...data.tasks]
     write(data)
+    return task.id
   }
 
   async deleteTask(id: string): Promise<void> {

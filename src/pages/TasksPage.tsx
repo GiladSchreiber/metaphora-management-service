@@ -6,7 +6,7 @@ import { Field, Modal } from '../components/ui'
 import { errorMessage, formatWhen, newId } from '../lib/format'
 import { ownerLabel, partnerName, URGENCY_LABELS } from '../lib/labels'
 import { useAppStore } from '../store/appStore'
-import type { Task, TaskDraft, TaskStatus, Subtask, Urgency } from '../types'
+import type { Task, TaskDraft, TaskDetailsMode, TaskStatus, Subtask, Urgency } from '../types'
 
 const URGENCY_RANK: Record<Urgency, number> = { high: 0, medium: 1, low: 2 }
 
@@ -22,6 +22,7 @@ interface TaskForm {
   ownerIds: string[]
   urgency: Urgency
   status: TaskStatus
+  detailsMode: TaskDetailsMode
   subtasks: Subtask[]
 }
 
@@ -62,6 +63,7 @@ export function TasksPage() {
       ownerIds: [],
       urgency: 'medium',
       status: 'open',
+      detailsMode: null,
       subtasks: [],
     })
   }
@@ -75,6 +77,7 @@ export function TasksPage() {
       ownerIds: task.ownerIds,
       urgency: task.urgency,
       status: task.status,
+      detailsMode: task.detailsMode,
       subtasks: task.subtasks.map(item => ({ ...item })),
     })
   }
@@ -252,7 +255,7 @@ function TaskDialog({
   updates: Task['updates']
   setForm: (form: TaskForm) => void
   onClose: () => void
-  onSave: (input: TaskDraft) => Promise<void>
+  onSave: (input: TaskDraft) => Promise<string>
   onDelete: () => void
   onAddUpdate: (input: { taskId: string; body: string; partnerId: string | null }) => Promise<void>
   onDeleteUpdate: (taskId: string, updateId: string) => Promise<void>
@@ -277,13 +280,15 @@ function TaskDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (saving) return
     if (!form.topic.trim()) { setError('יש להזין נושא'); return }
-    if (form.subtasks.some(item => !item.title.trim())) { setError('יש להזין טקסט לכל תת משימה או למחוק שורות ריקות'); return }
+    if (form.detailsMode === 'checklist' && form.subtasks.some(item => !item.title.trim())) { setError('יש להזין טקסט לכל תת משימה או למחוק שורות ריקות'); return }
     if (!form.categoryId) { setError('יש לבחור קטגוריה'); return }
     setSaving(true)
     setError('')
+    const isNew = !form.id
     try {
-      await onSave({
+      const savedId = await onSave({
         id: form.id,
         topic: form.topic,
         description: form.description,
@@ -291,12 +296,15 @@ function TaskDialog({
         ownerIds: form.ownerIds,
         urgency: form.urgency,
         status: form.status,
+        detailsMode: form.detailsMode,
         subtasks: form.subtasks,
       })
-      if (form.id && updateBody.trim()) {
-        await onAddUpdate({ taskId: form.id, body: updateBody, partnerId: updatePartner || null })
+      // Retain the new task id if posting its first update fails, so retrying does not create a duplicate.
+      if (isNew) setForm({ ...form, id: savedId })
+      if (form.detailsMode === 'updates' && updateBody.trim()) {
+        await onAddUpdate({ taskId: savedId, body: updateBody, partnerId: updatePartner || null })
       }
-      if (form.id) {
+      if (!isNew) {
         setSaving(false)
         setEditMode(false)
         setUpdateBody('')
@@ -309,17 +317,64 @@ function TaskDialog({
     }
   }
 
+  async function postUpdate(event: FormEvent) {
+    event.preventDefault()
+    if (!liveTask || saving || !updateBody.trim()) return
+    setSaving(true)
+    setError('')
+    try {
+      await onAddUpdate({ taskId: liveTask.id, body: updateBody, partnerId: updatePartner || null })
+      setUpdateBody('')
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const updateFields = (
+    <>
+      <Field label="עדכון חדש">
+        <textarea value={updateBody} disabled={saving} onChange={event => setUpdateBody(event.target.value)} rows={2} />
+      </Field>
+      <Field label="מי כותב">
+        <Select value={updatePartner} onChange={setUpdatePartner} options={[
+          { value: '', label: 'בלי שם' },
+          ...partners.map(partner => ({ value: partner.id, label: partner.name })),
+        ]} />
+      </Field>
+    </>
+  )
+
+  const updateHistory = (
+    <ul className="update-list">
+      {updates.map(update => (
+        <li key={update.id} className="update">
+          <p>{update.body}</p>
+          <div className="row-actions">
+            <span className="muted">{formatWhen(update.createdAt)}{update.partnerId ? ` · ${partnerName(partners, update.partnerId)}` : ''}</span>
+            {editMode && <button type="button" className="btn btn-ghost" disabled={saving} onClick={async () => {
+              setError('')
+              try { await onDeleteUpdate(form.id!, update.id) }
+              catch (err) { setError(errorMessage(err)) }
+            }}>מחיקה</button>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+
   if (!editMode && liveTask) {
     return (
       <Modal title="משימה" onClose={onClose} actions={
-        <button type="button" className="icon-btn" aria-label="עריכת משימה" title="עריכת משימה"
+        <button type="button" className="icon-btn" disabled={saving} aria-label="עריכת משימה" title="עריכת משימה"
           onClick={() => {
             setForm({ ...liveTask, subtasks: liveTask.subtasks.map(item => ({ ...item })) })
             setError('')
             setEditMode(true)
           }}><EditIcon /></button>
       }>
-        {saveError && <p className="error" role="alert">{saveError}</p>}
+        {(error || saveError) && <p className="error" role="alert">{error || saveError}</p>}
         <div className="task-read-heading">
           <label className="subtask-item">
             <input type="checkbox" className="check" checked={liveTask.status === 'done'}
@@ -334,7 +389,7 @@ function TaskDialog({
           <div><dt>דחיפות</dt><dd>{URGENCY_LABELS[liveTask.urgency]}</dd></div>
         </dl>
         {liveTask.description && <p className="task-description">{liveTask.description}</p>}
-        {liveTask.subtasks.length > 0 && (
+        {liveTask.detailsMode === 'checklist' && (
           <section>
             <h3>תתי משימות <span className="muted">({liveTask.subtasks.filter(item => item.done).length}/{liveTask.subtasks.length})</span></h3>
             <ul className="subtask-list">
@@ -350,18 +405,23 @@ function TaskDialog({
             </ul>
           </section>
         )}
-        {updates.length > 0 && (
+        {liveTask.detailsMode === 'updates' && (
           <section>
             <h3>עדכונים</h3>
-            <ul className="update-list">
-              {updates.map(update => (
-                <li key={update.id} className="update">
-                  <p>{update.body}</p>
-                  <span className="muted">{formatWhen(update.createdAt)}{update.partnerId ? ` · ${partnerName(partners, update.partnerId)}` : ''}</span>
-                </li>
-              ))}
-            </ul>
+            {updateHistory}
+            <form onSubmit={event => void postUpdate(event)}>
+              {updateFields}
+              <button type="submit" className="btn btn-primary" disabled={saving || !updateBody.trim()}>
+                {saving ? 'שומר…' : 'הוספת עדכון'}
+              </button>
+            </form>
           </section>
+        )}
+        {liveTask.detailsMode === 'checklist' && updates.length > 0 && (
+          <details className="legacy-updates">
+            <summary>עדכונים קודמים ({updates.length})</summary>
+            {updateHistory}
+          </details>
         )}
       </Modal>
     )
@@ -394,27 +454,37 @@ function TaskDialog({
         <Field label="תיאור">
           <textarea value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} rows={3} />
         </Field>
-        <fieldset className="subtask-editor" disabled={saving}>
-          <legend>תתי משימות</legend>
-          <ul className="subtask-list">
-            {form.subtasks.map((subtask, index) => (
-              <li key={subtask.id} className="subtask-edit-row">
-                <input type="checkbox" className="check" checked={subtask.done}
-                  aria-label={`סימון תת משימה ${index + 1} כבוצעה`}
-                  onChange={event => setForm({ ...form, subtasks: form.subtasks.map(item => item.id === subtask.id ? { ...item, done: event.target.checked } : item) })} />
-                <input value={subtask.title} aria-label={`תת משימה ${index + 1}`} placeholder="מה צריך לעשות?"
-                  onChange={event => setForm({ ...form, subtasks: form.subtasks.map(item => item.id === subtask.id ? { ...item, title: event.target.value } : item) })} />
-                <button type="button" className="btn btn-ghost" aria-label={`מחיקת תת משימה ${index + 1}`}
-                  onClick={() => setForm({ ...form, subtasks: form.subtasks.filter(item => item.id !== subtask.id) })}>מחיקה</button>
-              </li>
-            ))}
-          </ul>
-          <button type="button" className="btn btn-ghost"
-            onClick={() => setForm({ ...form, subtasks: [...form.subtasks, { id: newId('subtask'), title: '', done: false }] })}>
-            + הוספת תת משימה
-          </button>
-          <p className="muted">השינויים ברשימה יישמרו בלחיצה על שמירה.</p>
-        </fieldset>
+        {form.detailsMode === null && (
+          <div className="task-detail-options">
+            <button type="button" className="btn btn-ghost" onClick={() => setForm({
+              ...form, detailsMode: 'checklist', subtasks: [{ id: newId('subtask'), title: '', done: false }],
+            })}>+ הוספת רשימה</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setForm({ ...form, detailsMode: 'updates' })}>+ הוספת עדכון</button>
+          </div>
+        )}
+        {form.detailsMode === 'checklist' && (
+          <fieldset className="subtask-editor" disabled={saving}>
+            <legend>תתי משימות</legend>
+            <ul className="subtask-list">
+              {form.subtasks.map((subtask, index) => (
+                <li key={subtask.id} className="subtask-edit-row">
+                  <input type="checkbox" className="check" checked={subtask.done}
+                    aria-label={`סימון תת משימה ${index + 1} כבוצעה`}
+                    onChange={event => setForm({ ...form, subtasks: form.subtasks.map(item => item.id === subtask.id ? { ...item, done: event.target.checked } : item) })} />
+                  <input value={subtask.title} aria-label={`תת משימה ${index + 1}`} placeholder="מה צריך לעשות?"
+                    onChange={event => setForm({ ...form, subtasks: form.subtasks.map(item => item.id === subtask.id ? { ...item, title: event.target.value } : item) })} />
+                  <button type="button" className="btn btn-ghost" aria-label={`מחיקת תת משימה ${index + 1}`}
+                    onClick={() => setForm({ ...form, subtasks: form.subtasks.filter(item => item.id !== subtask.id) })}>מחיקה</button>
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="btn btn-ghost"
+              onClick={() => setForm({ ...form, subtasks: [...form.subtasks, { id: newId('subtask'), title: '', done: false }] })}>
+              + הוספת תת משימה
+            </button>
+            <p className="muted">השינויים ברשימה יישמרו בלחיצה על שמירה.</p>
+          </fieldset>
+        )}
         <Field label="דחיפות">
           <Select
             value={form.urgency}
@@ -427,36 +497,11 @@ function TaskDialog({
         </Field>
       </form>
 
-      {form.id && (
+      {form.detailsMode === 'updates' && (
         <section>
           <h3>עדכונים</h3>
-          <ul className="update-list">
-            {updates.map(update => (
-              <li key={update.id} className="update">
-                <p>{update.body}</p>
-                <div className="row-actions">
-                  <span className="muted">
-                    {formatWhen(update.createdAt)}
-                    {update.partnerId ? ` · ${partnerName(partners, update.partnerId)}` : ''}
-                  </span>
-                  <button type="button" className="btn btn-ghost" onClick={() => void onDeleteUpdate(form.id!, update.id)}>מחיקה</button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          <Field label="עדכון חדש">
-            <textarea value={updateBody} onChange={event => setUpdateBody(event.target.value)} rows={2} />
-          </Field>
-          <Field label="מי כותב">
-            <Select
-              value={updatePartner}
-              onChange={setUpdatePartner}
-              options={[
-                { value: '', label: 'בלי שם' },
-                ...partners.map(partner => ({ value: partner.id, label: partner.name })),
-              ]}
-            />
-          </Field>
+          {updateHistory}
+          {updateFields}
         </section>
       )}
 

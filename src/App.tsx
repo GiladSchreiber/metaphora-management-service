@@ -9,7 +9,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AppShell />}>
-          <Route index element={<CashflowPage />} />
+          <Route index element={<Navigate to="/tasks" replace />} />
+          <Route path="cashflow" element={<CashflowPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="contacts" element={<ContactsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

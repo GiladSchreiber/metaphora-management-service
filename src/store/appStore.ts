@@ -23,7 +23,7 @@ interface AppState {
   deleteCategory: (id: string) => Promise<void>
   saveExpense: (input: ExpenseDraft) => Promise<void>
   deleteExpense: (id: string) => Promise<void>
-  saveTask: (input: TaskDraft) => Promise<void>
+  saveTask: (input: TaskDraft) => Promise<string>
   deleteTask: (id: string) => Promise<void>
   setSubtaskDone: (taskId: string, subtaskId: string, done: boolean) => Promise<void>
   setTaskStatus: (id: string, status: TaskStatus) => Promise<void>
@@ -135,7 +135,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     await Promise.all(pending.map(entry => entry.tail))
     // The dialog may have opened while a parent checkbox was still saving.
     const current = pendingStatus ? get().data.tasks.find(task => task.id === input.id) : undefined
-    await change(() => repo.saveTask(current ? { ...input, status: current.status } : input), get().refresh)
+    const id = await repo.saveTask(current ? { ...input, status: current.status } : input)
+    await get().refresh()
+    return id
   },
   deleteTask: async id => change(() => repo.deleteTask(id), get().refresh),
   setTaskStatus: async (id, status) => {

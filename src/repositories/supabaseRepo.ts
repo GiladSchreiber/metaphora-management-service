@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { taskDetailsMode } from '../lib/taskDetails'
 import { buildSeed } from '../data/seed'
 import { loadContactSeeds } from '../data/loadContacts'
 import { assertCategoryFree, assertPartnerFree, assertUniqueName } from '../lib/guards'
@@ -11,6 +12,7 @@ import type {
   Repository,
   Subtask,
   TaskDraft,
+  TaskDetailsMode,
   TaskStatus,
   TaskUpdate,
   Urgency,
@@ -40,6 +42,7 @@ interface TaskRow {
   status: TaskStatus
   done_at: string | null
   photo_url: string | null
+  details_mode?: TaskDetailsMode
   subtasks?: Subtask[]
   created_at: string
 }
@@ -185,7 +188,7 @@ export class SupabaseRepository implements Repository {
     throwIf(error)
   }
 
-  async saveTask(input: TaskDraft): Promise<void> {
+  async saveTask(input: TaskDraft): Promise<string> {
     const data = await this.fetchAll()
     const existing = input.id ? data.tasks.find(task => task.id === input.id) : undefined
     if (input.id && !existing) throw new Error('המשימה לא נמצאה')
@@ -210,6 +213,7 @@ export class SupabaseRepository implements Repository {
       status: input.status,
       done_at: doneAt,
       photo_url: photoUrl,
+      details_mode: input.detailsMode !== undefined ? input.detailsMode : existing?.detailsMode ?? null,
       subtasks: (input.subtasks ?? existing?.subtasks ?? []).map(item => ({ ...item, title: item.title.trim() })),
       created_at: existing?.createdAt ?? new Date().toISOString(),
     })
@@ -221,6 +225,7 @@ export class SupabaseRepository implements Repository {
       const { error: ownersError } = await this.supabase.from('task_owners').insert(owners)
       throwIf(ownersError)
     }
+    return id
   }
 
   async deleteTask(id: string): Promise<void> {
@@ -402,6 +407,7 @@ export class SupabaseRepository implements Repository {
         doneAt: row.done_at,
         photoUrl: row.photo_url,
         createdAt: row.created_at,
+        detailsMode: taskDetailsMode({ detailsMode: row.details_mode, subtasks: row.subtasks ?? [], updates: updatesByTask.get(row.id) ?? [] }),
         subtasks: row.subtasks ?? [],
         updates: updatesByTask.get(row.id) ?? [],
       })),

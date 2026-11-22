@@ -1,5 +1,6 @@
 export type Urgency = 'low' | 'medium' | 'high'
 export type TaskStatus = 'open' | 'done'
+export type TaskDetailsMode = 'checklist' | 'updates' | null
 
 export interface NamedRecord {
   id: string
@@ -46,6 +47,7 @@ export interface Task {
   doneAt: string | null
   photoUrl: string | null
   createdAt: string
+  detailsMode: TaskDetailsMode
   subtasks: Subtask[]
   updates: TaskUpdate[]
 }
@@ -88,6 +90,7 @@ export interface TaskDraft {
   ownerIds: string[]
   urgency: Urgency
   status: TaskStatus
+  detailsMode?: TaskDetailsMode
   subtasks?: Subtask[]
   photoDataUrl?: string | null
   clearPhoto?: boolean
@@ -110,7 +113,7 @@ export interface Repository {
   deleteCategory(id: string): Promise<void>
   saveExpense(input: ExpenseDraft): Promise<void>
   deleteExpense(id: string): Promise<void>
-  saveTask(input: TaskDraft): Promise<void>
+  saveTask(input: TaskDraft): Promise<string>
   deleteTask(id: string): Promise<void>
   setSubtaskDone(taskId: string, subtaskId: string, done: boolean): Promise<void>
   setTaskStatus(id: string, status: TaskStatus): Promise<void>
