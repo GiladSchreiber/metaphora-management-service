@@ -29,6 +29,12 @@ export interface TaskUpdate {
   createdAt: string
 }
 
+export interface Subtask {
+  id: string
+  title: string
+  done: boolean
+}
+
 export interface Task {
   id: string
   topic: string
@@ -40,6 +46,7 @@ export interface Task {
   doneAt: string | null
   photoUrl: string | null
   createdAt: string
+  subtasks: Subtask[]
   updates: TaskUpdate[]
 }
 
@@ -81,6 +88,7 @@ export interface TaskDraft {
   ownerIds: string[]
   urgency: Urgency
   status: TaskStatus
+  subtasks?: Subtask[]
   photoDataUrl?: string | null
   clearPhoto?: boolean
 }
@@ -104,6 +112,7 @@ export interface Repository {
   deleteExpense(id: string): Promise<void>
   saveTask(input: TaskDraft): Promise<void>
   deleteTask(id: string): Promise<void>
+  setSubtaskDone(taskId: string, subtaskId: string, done: boolean): Promise<void>
   setTaskStatus(id: string, status: TaskStatus): Promise<void>
   addTaskUpdate(input: { taskId: string; body: string; partnerId: string | null }): Promise<void>
   deleteTaskUpdate(taskId: string, updateId: string): Promise<void>

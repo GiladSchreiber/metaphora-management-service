@@ -140,6 +140,7 @@ export function buildTasks(categories: Category[]): Task[] {
         doneAt: null,
         photoUrl: null,
         createdAt,
+        subtasks: [],
         updates: [],
       })
       index += 1

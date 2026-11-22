@@ -9,6 +9,7 @@ import type {
   ContactDraft,
   ExpenseDraft,
   Repository,
+  Subtask,
   TaskDraft,
   TaskStatus,
   TaskUpdate,
@@ -39,6 +40,7 @@ interface TaskRow {
   status: TaskStatus
   done_at: string | null
   photo_url: string | null
+  subtasks?: Subtask[]
   created_at: string
 }
 interface OwnerRow { task_id: string; partner_id: string }
@@ -208,6 +210,7 @@ export class SupabaseRepository implements Repository {
       status: input.status,
       done_at: doneAt,
       photo_url: photoUrl,
+      subtasks: (input.subtasks ?? existing?.subtasks ?? []).map(item => ({ ...item, title: item.title.trim() })),
       created_at: existing?.createdAt ?? new Date().toISOString(),
     })
     throwIf(error)
@@ -229,15 +232,21 @@ export class SupabaseRepository implements Repository {
   }
 
   async setTaskStatus(id: string, status: TaskStatus): Promise<void> {
-    const { data, error } = await this.supabase.from('tasks').select('done_at').eq('id', id).maybeSingle()
+    const { data, error } = await this.supabase.from('tasks').update({
+      status,
+      done_at: status === 'done' ? new Date().toISOString() : null,
+    }).eq('id', id).select('id').single()
     throwIf(error)
     if (!data) throw new Error('המשימה לא נמצאה')
-    const doneAt = status === 'done' ? (data.done_at as string | null) ?? new Date().toISOString() : null
-    const { error: updateError } = await this.supabase.from('tasks').update({
-      status,
-      done_at: doneAt,
-    }).eq('id', id)
-    throwIf(updateError)
+  }
+
+  async setSubtaskDone(taskId: string, subtaskId: string, done: boolean): Promise<void> {
+    const { error } = await this.supabase.rpc('set_task_subtask_done', {
+      task_id: taskId,
+      subtask_id: subtaskId,
+      is_done: done,
+    })
+    throwIf(error)
   }
 
   async addTaskUpdate(input: { taskId: string; body: string; partnerId: string | null }): Promise<void> {
@@ -393,6 +402,7 @@ export class SupabaseRepository implements Repository {
         doneAt: row.done_at,
         photoUrl: row.photo_url,
         createdAt: row.created_at,
+        subtasks: row.subtasks ?? [],
         updates: updatesByTask.get(row.id) ?? [],
       })),
       contacts: contacts.map(row => ({

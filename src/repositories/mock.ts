@@ -29,6 +29,7 @@ function read(): AppData {
     if (!parsed.partners || !parsed.categories || !parsed.tasks || !parsed.expenses || !parsed.contacts) {
       return write(seed())
     }
+    parsed.tasks = parsed.tasks.map(task => ({ ...task, subtasks: task.subtasks ?? [] }))
     return parsed
   } catch {
     return write(seed())
@@ -152,6 +153,7 @@ export class MockRepository implements Repository {
       doneAt,
       photoUrl,
       createdAt: existing?.createdAt ?? new Date().toISOString(),
+      subtasks: (input.subtasks ?? existing?.subtasks ?? []).map(item => ({ ...item, title: item.title.trim() })),
       updates: existing?.updates ?? [],
     }
     data.tasks = existing
@@ -172,6 +174,14 @@ export class MockRepository implements Repository {
     if (!task) throw new Error('המשימה לא נמצאה')
     task.status = status
     task.doneAt = status === 'done' ? task.doneAt ?? new Date().toISOString() : null
+    write(data)
+  }
+
+  async setSubtaskDone(taskId: string, subtaskId: string, done: boolean): Promise<void> {
+    const data = read()
+    const subtask = data.tasks.find(task => task.id === taskId)?.subtasks.find(item => item.id === subtaskId)
+    if (!subtask) throw new Error('תת המשימה לא נמצאה')
+    subtask.done = done
     write(data)
   }
 

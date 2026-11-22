@@ -318,10 +318,13 @@ textarea { resize: vertical; min-height: 88px; }
   font-weight: 700;
 }
 
-.task-row {
+.task-heading {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+}
+
+.task-row {
   min-height: 46px;
   padding: 8px 12px;
   min-width: 0;
@@ -482,3 +485,13 @@ textarea { resize: vertical; min-height: 88px; }
   .filters .select, .filters input { width: 100%; }
   .page-title { font-size: 1.35rem; }
 }
+
+.subtask-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.task-row > .subtask-list { margin-inline-start: calc(1.15rem + 10px); }
+.subtask-item { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; cursor: pointer; overflow-wrap: anywhere; }
+.subtask-item span { min-width: 0; }
+.subtask-done span { text-decoration: line-through; color: $muted; }
+.subtask-editor { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
+.subtask-editor legend { font-weight: 700; }
+.subtask-edit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.subtask-edit-row input:not([type='checkbox']) { flex: 1; min-width: 0; }

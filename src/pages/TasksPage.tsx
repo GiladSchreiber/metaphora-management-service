@@ -3,10 +3,10 @@ import { CategoryField } from '../components/CategoryField'
 import { PlusIcon, SearchIcon } from '../components/icons'
 import { Select } from '../components/Select'
 import { Field, Modal } from '../components/ui'
-import { errorMessage, formatWhen } from '../lib/format'
+import { errorMessage, formatWhen, newId } from '../lib/format'
 import { ownerLabel, partnerName, URGENCY_LABELS } from '../lib/labels'
 import { useAppStore } from '../store/appStore'
-import type { Task, TaskDraft, TaskStatus, Urgency } from '../types'
+import type { Task, TaskDraft, TaskStatus, Subtask, Urgency } from '../types'
 
 const URGENCY_RANK: Record<Urgency, number> = { high: 0, medium: 1, low: 2 }
 
@@ -22,6 +22,7 @@ interface TaskForm {
   ownerIds: string[]
   urgency: Urgency
   status: TaskStatus
+  subtasks: Subtask[]
 }
 
 export function TasksPage() {
@@ -61,6 +62,7 @@ export function TasksPage() {
       ownerIds: [],
       urgency: 'medium',
       status: 'open',
+      subtasks: [],
     })
   }
 
@@ -73,6 +75,7 @@ export function TasksPage() {
       ownerIds: task.ownerIds,
       urgency: task.urgency,
       status: task.status,
+      subtasks: task.subtasks.map(item => ({ ...item })),
     })
   }
 
@@ -188,29 +191,46 @@ function TaskRow({
 }) {
   const partners = useAppStore(state => state.data.partners)
   const categories = useAppStore(state => state.data.categories)
+  const setSubtaskDone = useAppStore(state => state.setSubtaskDone)
   const category = categories.find(item => item.id === task.categoryId)?.name
   const done = task.status === 'done'
   return (
     <li className={done ? 'task-row task-done' : 'task-row'}>
-      <input
-        className="check"
-        type="checkbox"
-        checked={done}
-        aria-label={done ? 'החזרה לפתוחות' : 'סימון כבוצע'}
-        onChange={() => void onToggle(task.id, done ? 'open' : 'done')}
-      />
-      <button type="button" className="task-main" onClick={() => onOpen(task)}>
-        <span className="task-title">{task.topic}</span>
-        <span className={`urgency-label urgency-${task.urgency}`}>
-          <span className="urgency" aria-hidden="true" />
-          {URGENCY_LABELS[task.urgency]}
-        </span>
-        <span className="task-sub">
-          <span>{ownerLabel(partners, task.ownerIds)}</span>
-          {done && category && <span>{category}</span>}
-          {task.updates.length > 0 && <span>{task.updates.length} עדכונים</span>}
-        </span>
-      </button>
+      <div className="task-heading">
+        <input
+          className="check"
+          type="checkbox"
+          checked={done}
+          aria-label={done ? 'החזרה לפתוחות' : 'סימון כבוצע'}
+          onChange={() => void onToggle(task.id, done ? 'open' : 'done')}
+        />
+        <button type="button" className="task-main" onClick={() => onOpen(task)}>
+          <span className="task-title">{task.topic}</span>
+          <span className={`urgency-label urgency-${task.urgency}`}>
+            <span className="urgency" aria-hidden="true" />
+            {URGENCY_LABELS[task.urgency]}
+          </span>
+          <span className="task-sub">
+            <span>{ownerLabel(partners, task.ownerIds)}</span>
+            {done && category && <span>{category}</span>}
+            {task.subtasks.length > 0 && <span>{task.subtasks.filter(item => item.done).length}/{task.subtasks.length} תתי משימות</span>}
+            {task.updates.length > 0 && <span>{task.updates.length} עדכונים</span>}
+          </span>
+        </button>
+      </div>
+      {task.subtasks.length > 0 && (
+        <ul className="subtask-list">
+          {task.subtasks.map(subtask => (
+            <li key={subtask.id}>
+              <label className={subtask.done ? 'subtask-item subtask-done' : 'subtask-item'}>
+                <input type="checkbox" className="check" checked={subtask.done}
+                  onChange={event => void setSubtaskDone(task.id, subtask.id, event.target.checked)} />
+                <span>{subtask.title}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   )
 }
@@ -250,6 +270,7 @@ function TaskDialog({
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!form.topic.trim()) { setError('יש להזין נושא'); return }
+    if (form.subtasks.some(item => !item.title.trim())) { setError('יש להזין טקסט לכל תת משימה או למחוק שורות ריקות'); return }
     if (!form.categoryId) { setError('יש לבחור קטגוריה'); return }
     setSaving(true)
     setError('')
@@ -262,6 +283,7 @@ function TaskDialog({
         ownerIds: form.ownerIds,
         urgency: form.urgency,
         status: form.status,
+        subtasks: form.subtasks,
       })
       if (form.id && updateBody.trim()) {
         await onAddUpdate({ taskId: form.id, body: updateBody, partnerId: updatePartner || null })
@@ -300,6 +322,27 @@ function TaskDialog({
         <Field label="תיאור">
           <textarea value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} rows={3} />
         </Field>
+        <fieldset className="subtask-editor" disabled={saving}>
+          <legend>תתי משימות</legend>
+          <ul className="subtask-list">
+            {form.subtasks.map((subtask, index) => (
+              <li key={subtask.id} className="subtask-edit-row">
+                <input type="checkbox" className="check" checked={subtask.done}
+                  aria-label={`סימון תת משימה ${index + 1} כבוצעה`}
+                  onChange={event => setForm({ ...form, subtasks: form.subtasks.map(item => item.id === subtask.id ? { ...item, done: event.target.checked } : item) })} />
+                <input value={subtask.title} aria-label={`תת משימה ${index + 1}`} placeholder="מה צריך לעשות?"
+                  onChange={event => setForm({ ...form, subtasks: form.subtasks.map(item => item.id === subtask.id ? { ...item, title: event.target.value } : item) })} />
+                <button type="button" className="btn btn-ghost" aria-label={`מחיקת תת משימה ${index + 1}`}
+                  onClick={() => setForm({ ...form, subtasks: form.subtasks.filter(item => item.id !== subtask.id) })}>מחיקה</button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="btn btn-ghost"
+            onClick={() => setForm({ ...form, subtasks: [...form.subtasks, { id: newId('subtask'), title: '', done: false }] })}>
+            + הוספת תת משימה
+          </button>
+          <p className="muted">השינויים ברשימה יישמרו בלחיצה על שמירה.</p>
+        </fieldset>
         <Field label="דחיפות">
           <Select
             value={form.urgency}
